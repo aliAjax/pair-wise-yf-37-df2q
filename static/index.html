@@ -5,30 +5,370 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>传染病暴发调查与接触网络</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #1f2937; }
-    main { max-width: 820px; margin: auto; }
-    pre { background: #f3f4f6; padding: 1rem; border-radius: 8px; overflow-x: auto; }
-    button { padding: .5rem .8rem; cursor: pointer; }
+    :root { --line:#e5e7eb; --muted:#6b7280; --bg:#f9fafb; --blue:#2563eb; --red:#dc2626; --amber:#b45309; --green:#15803d; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; color: #1f2937; background: var(--bg); }
+    main { max-width: 980px; margin: auto; padding: 1.5rem 1.5rem 4rem; }
+    h1 { font-size: 1.4rem; }
+    h2 { font-size: 1.1rem; margin-top: 2rem; border-bottom: 2px solid var(--line); padding-bottom: .35rem; }
+    h3 { font-size: .95rem; margin: 0 0 .5rem; }
+    .bar { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: .75rem 1rem; }
+    .bar label { font-size: .8rem; color: var(--muted); }
+    select, input, button { font: inherit; padding: .35rem .55rem; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; }
+    button { cursor: pointer; background: #fff; }
+    button.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+    button.danger { color: var(--red); border-color: #fecaca; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 1rem; }
+    .form-row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: end; margin-bottom: .5rem; }
+    .form-row label { display: flex; flex-direction: column; font-size: .75rem; color: var(--muted); gap: .2rem; }
+    .form-row input, .form-row select { min-width: 9rem; }
+    .case-card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
+    .case-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+    .case-head .meta { color: var(--muted); font-size: .8rem; }
+    .stats { display: flex; gap: .75rem; flex-wrap: wrap; margin: .75rem 0; }
+    .stat { border: 1px solid var(--line); border-radius: 8px; padding: .35rem .7rem; font-size: .8rem; background: var(--bg); }
+    .stat b { font-size: 1.05rem; }
+    .stat.pending b { color: var(--red); }
+    .stat.following b { color: var(--amber); }
+    .stat.done b { color: var(--green); }
+    .badge { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .72rem; border: 1px solid var(--line); background: var(--bg); }
+    .badge.recorded, .badge.completed, .badge.confirmed, .badge.recovered, .badge.closed { color: var(--green); border-color:#bbf7d0; background:#f0fdf4; }
+    .badge.pending_time, .badge.reported, .badge.identified { color: var(--red); border-color:#fecaca; background:#fef2f2; }
+    .badge.following, .badge.investigating, .badge.probable { color: var(--amber); border-color:#fde68a; background:#fffbeb; }
+    .badge.withdrawn { color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+    th, td { text-align: left; padding: .35rem .4rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; font-size: .72rem; }
+    .sub { margin-top: .75rem; }
+    .sub-title { font-size: .78rem; font-weight: 600; color: var(--muted); margin: .6rem 0 .3rem; text-transform: uppercase; letter-spacing: .03em; }
+    .muted { color: var(--muted); font-size: .78rem; }
+    .reason { color: var(--red); font-size: .72rem; }
+    pre#result { background: #111827; color: #e5e7eb; padding: .8rem; border-radius: 8px; font-size: .72rem; max-height: 220px; overflow: auto; display: none; }
+    .wide { grid-column: 1 / -1; }
+    details summary { cursor: pointer; font-size: .8rem; color: var(--muted); }
   </style>
 </head>
 <body>
 <main>
-  <h1>传染病暴发调查与接触网络</h1>
-  <p>这是最小演示页面。使用浏览器或 curl 调用 JSON API。</p>
-  <p><button onclick="checkHealth()">检查服务状态</button></p>
-  <pre id="result">等待操作</pre>
-  <h2>常用接口</h2>
-  <pre>GET  /health
-GET  /api/&lt;kind&gt;
-POST /api/&lt;kind&gt;
-GET  /api/entities/&lt;id&gt;
-POST /api/entities/&lt;id&gt;/actions</pre>
+  <h1>传染病暴发调查与接触网络 — 轨迹时段与暴露随访</h1>
+
+  <div class="bar">
+    <label>当前角色
+      <select id="role">
+        <option value="admin">admin（管理员）</option>
+        <option value="investigator" selected>investigator（调查员）</option>
+        <option value="clinician">clinician（临床）</option>
+        <option value="lab">lab（检验）</option>
+        <option value="viewer">viewer（访客）</option>
+      </select>
+    </label>
+    <label>用户ID <input id="userId" value="iv-demo" style="min-width:7rem"></label>
+    <button class="primary" onclick="loadAll()">刷新</button>
+    <button onclick="seedDemo()">载入演示数据</button>
+  </div>
+
+  <h2>随访工作台 <span class="muted">（重叠人数 / 待处理名单 / 待补轨迹）</span></h2>
+  <div id="totals" class="stats"></div>
+  <div id="worklist"></div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>① 登记病例</h3>
+      <div class="form-row">
+        <label>患者编号 <input id="cPerson" placeholder="P-1"></label>
+        <label>发病日期 <input id="cOnset" type="date"></label>
+      </div>
+      <div class="form-row">
+        <label>地点 <input id="cLocation" placeholder="Cafe-X"></label>
+        <label>症状 <input id="cSymptoms" value="fever"></label>
+      </div>
+      <button class="primary" onclick="createCase()">登记病例</button>
+    </div>
+
+    <div class="card">
+      <h3>② 登记活动轨迹</h3>
+      <div class="form-row">
+        <label>病例
+          <select id="mCase"></select>
+        </label>
+        <label>人员编号 <input id="mPerson" placeholder="留空=病例本人"></label>
+      </div>
+      <div class="form-row">
+        <label>地点 <input id="mLocation" placeholder="Cafe-X"></label>
+      </div>
+      <div class="form-row">
+        <label>进入时间 <input id="mEnter" type="datetime-local" step="60"></label>
+        <label>离开时间 <input id="mLeave" type="datetime-local" step="60"></label>
+      </div>
+      <div class="form-row">
+        <label style="flex:1">时间缺失待补原因 <input id="mReason" placeholder="时间不全时必填，如：患者回忆中"></label>
+      </div>
+      <button class="primary" onclick="createMovement()">登记轨迹</button>
+      <p class="muted">进入/离开时间都填写才参与重叠计算；只填其一或都不填须写待补原因，轨迹进入待补状态。</p>
+    </div>
+  </div>
+
+  <h2>轨迹明细（补录 / 改正时间）</h2>
+  <div id="movements"></div>
+
+  <details>
+    <summary>最近接口响应（调试）</summary>
+    <pre id="result"></pre>
+  </details>
 </main>
+
 <script>
-async function checkHealth() {
-  const response = await fetch('/health');
-  document.getElementById('result').textContent = JSON.stringify(await response.json(), null, 2);
+let state = { cases: [], movements: [], worklist: null };
+
+function headers() {
+  return {
+    'Content-Type': 'application/json',
+    'X-User-Id': document.getElementById('userId').value || 'anonymous',
+    'X-Role': document.getElementById('role').value,
+  };
 }
+
+function esc(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
+function showResult(payload) {
+  const el = document.getElementById('result');
+  el.style.display = 'block';
+  el.textContent = JSON.stringify(payload, null, 2);
+}
+
+async function api(method, path, body) {
+  const response = await fetch(path, {
+    method,
+    headers: headers(),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    showResult(payload);
+    alert(payload.error || ('请求失败 ' + response.status));
+    throw new Error(payload.error);
+  }
+  showResult(payload);
+  return payload;
+}
+
+function toIsoLocal(value) {
+  // datetime-local gives "YYYY-MM-DDTHH:mm"; the server accepts ISO 8601.
+  return value ? value.replace('T', 'T') : '';
+}
+
+async function createCase() {
+  await api('POST', '/api/cases', {
+    person_id: document.getElementById('cPerson').value.trim(),
+    onset_date: document.getElementById('cOnset').value,
+    location: document.getElementById('cLocation').value.trim(),
+    symptoms: document.getElementById('cSymptoms').value.split(',').map(s => s.trim()).filter(Boolean),
+  });
+  await loadAll();
+}
+
+async function createMovement() {
+  const body = {
+    case_id: document.getElementById('mCase').value,
+    location: document.getElementById('mLocation').value.trim(),
+  };
+  const person = document.getElementById('mPerson').value.trim();
+  if (person) body.person_id = person;
+  const enter = document.getElementById('mEnter').value;
+  const leave = document.getElementById('mLeave').value;
+  if (enter) body.enter_time = toIsoLocal(enter);
+  if (leave) body.leave_time = toIsoLocal(leave);
+  const reason = document.getElementById('mReason').value.trim();
+  if (reason) body.missing_time_reason = reason;
+  await api('POST', '/api/movements', body);
+  await loadAll();
+}
+
+async function supplyTimes(id) {
+  const enter = prompt('补录进入时间 (YYYY-MM-DDTHH:MM)', '2026-02-28T09:00');
+  if (!enter) return;
+  const leave = prompt('补录离开时间 (YYYY-MM-DDTHH:MM)', '2026-02-28T11:00');
+  if (!leave) return;
+  await api('POST', `/api/entities/${id}/actions`, {
+    action: 'supply_times',
+    data: { enter_time: enter, leave_time: leave },
+  });
+  await loadAll();
+}
+
+async function correctTimes(id) {
+  const enter = prompt('改正后的进入时间 (YYYY-MM-DDTHH:MM)');
+  if (!enter) return;
+  const leave = prompt('改正后的离开时间 (YYYY-MM-DDTHH:MM)');
+  if (!leave) return;
+  await api('POST', `/api/entities/${id}/actions`, {
+    action: 'correct_times',
+    data: { enter_time: enter, leave_time: leave },
+  });
+  await loadAll();
+}
+
+async function startFollowup(caseId, personId, start) {
+  const contact = await api('POST', '/api/contacts', {
+    case_id: caseId,
+    person_id: personId,
+    exposure_start: (start || '').replace(' ', 'T') || new Date().toISOString().slice(0, 10),
+  });
+  const due = prompt('随访截止日期 (YYYY-MM-DD)', new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10));
+  if (!due) { await loadAll(); return; }
+  await api('POST', `/api/entities/${contact.id}/actions`, {
+    action: 'begin_followup',
+    data: { followup_start: new Date().toISOString().slice(0, 10), due_at: due },
+  });
+  await loadAll();
+}
+
+function renderTotals(t) {
+  document.getElementById('totals').innerHTML = `
+    <span class="stat">病例 <b>${t.cases}</b></span>
+    <span class="stat">累计重叠人数 <b>${t.overlap_exposures}</b></span>
+    <span class="stat pending">待随访 <b>${t.pending_followup}</b></span>
+    <span class="stat following">随访中 <b>${t.following}</b></span>
+    <span class="stat done">已排除 <b>${t.excluded}</b></span>
+    <span class="stat pending">待补时间轨迹 <b>${t.pending_times}</b></span>`;
+}
+
+function personRows(entries, kind, caseId) {
+  if (!entries.length) return '<tr><td colspan="4" class="muted">无</td></tr>';
+  return entries.map(e => {
+    const first = (e.overlaps && e.overlaps[0]) || {};
+    const action = kind === 'pending'
+      ? `<button onclick="startFollowup('${caseId}','${esc(e.person_id)}','${esc(first.overlap_start || '')}')">开始随访</button>`
+      : esc(e.contact_status || '');
+    const reason = e.exclude_reason ? `<div class="reason">${esc(e.exclude_reason)}</div>` : '';
+    const locs = [...new Set((e.overlaps || []).map(o => o.location))].join(', ');
+    const times = (e.overlaps || []).map(o => `${(o.overlap_start || '').replace('T', ' ').slice(0, 16)} ~ ${(o.overlap_end || '').replace('T', ' ').slice(0, 16)}`).join('<br>');
+    return `<tr>
+      <td>${esc(e.person_id)}${reason}</td>
+      <td>${esc(locs)} <span class="muted">×${e.overlap_count}</span></td>
+      <td>${times}</td>
+      <td>${action}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderWorklist() {
+  const { items } = state.worklist;
+  if (!items.length) {
+    document.getElementById('worklist').innerHTML = '<p class="muted">尚无病例。点击“载入演示数据”快速体验。</p>';
+    return;
+  }
+  document.getElementById('worklist').innerHTML = items.map(item => `
+    <div class="case-card">
+      <div class="case-head">
+        <div>
+          <strong>病例 ${esc(item.person_id)}</strong>
+          <span class="badge ${esc(item.case_status)}">${esc(item.case_status)}</span>
+          <code class="meta">${esc(item.case_id)}</code>
+        </div>
+        <div class="meta">发病 ${esc(item.onset_date)} · 报告地点 ${esc(item.location)}</div>
+      </div>
+      <div class="stats">
+        <span class="stat">重叠人数 <b>${item.overlap_count}</b></span>
+        <span class="stat pending">待随访 <b>${item.pending.length}</b></span>
+        <span class="stat following">随访中 <b>${item.following.length}</b></span>
+        <span class="stat done">已排除 <b>${item.excluded.length}</b></span>
+        <span class="stat pending">待补轨迹 <b>${item.pending_times.length}</b></span>
+      </div>
+      <div class="sub">
+        <div class="sub-title">待处理名单</div>
+        <table><thead><tr><th>人员</th><th>重叠地点</th><th>重叠时段</th><th>操作</th></tr></thead>
+        <tbody>${personRows(item.pending, 'pending', item.case_id)}</tbody></table>
+      </div>
+      ${item.following.length ? `<details class="sub"><summary>随访中（${item.following.length}）</summary>
+        <table><thead><tr><th>人员</th><th>重叠地点</th><th>重叠时段</th><th>状态</th></tr></thead>
+        <tbody>${personRows(item.following, 'following', item.case_id)}</tbody></table></details>` : ''}
+      ${item.excluded.length ? `<details class="sub"><summary>已排除：完成观察或本人已发病（${item.excluded.length}）</summary>
+        <table><thead><tr><th>人员</th><th>重叠地点</th><th>重叠时段</th><th>原因</th></tr></thead>
+        <tbody>${personRows(item.excluded, 'excluded', item.case_id)}</tbody></table></details>` : ''}
+      ${item.pending_times.length ? `<div class="sub">
+        <div class="sub-title">时间待补轨迹（不参与重叠计算）</div>
+        ${item.pending_times.map(m => `<div class="muted">📍 ${esc(m.location)}
+          <span class="reason">原因：${esc(m.missing_time_reason)}</span>
+          <button onclick="supplyTimes('${m.id}')">补录时间</button></div>`).join('')}
+      </div>` : ''}
+    </div>`).join('');
+}
+
+function renderMovements() {
+  if (!state.movements.length) {
+    document.getElementById('movements').innerHTML = '<p class="muted">暂无轨迹。</p>';
+    return;
+  }
+  const caseName = {};
+  state.cases.forEach(c => { caseName[c.id] = c.data.person_id; });
+  document.getElementById('movements').innerHTML = `
+    <table><thead><tr>
+      <th>所属病例</th><th>人员</th><th>地点</th><th>进入</th><th>离开</th><th>状态</th><th>待补原因</th><th>操作</th>
+    </tr></thead><tbody>
+    ${state.movements.map(m => `<tr>
+      <td>${esc(caseName[m.data.case_id] || m.data.case_id)}</td>
+      <td>${esc(m.data.person_id)}</td>
+      <td>${esc(m.data.location)}</td>
+      <td>${esc((m.data.enter_time || '').replace('T', ' ').slice(0, 16))}</td>
+      <td>${esc((m.data.leave_time || '').replace('T', ' ').slice(0, 16))}</td>
+      <td><span class="badge ${m.status}">${m.status === 'pending_time' ? '待补时间' : '已记录'}</span></td>
+      <td class="reason">${esc(m.data.missing_time_reason || '')}</td>
+      <td>
+        ${m.status === 'pending_time' ? `<button onclick="supplyTimes('${m.id}')">补录</button>` : `<button onclick="correctTimes('${m.id}')">改正时间</button>`}
+      </td>
+    </tr>`).join('')}
+    </tbody></table>`;
+}
+
+function renderCaseSelect() {
+  const select = document.getElementById('mCase');
+  const current = select.value;
+  select.innerHTML = state.cases.map(c =>
+    `<option value="${c.id}">${esc(c.data.person_id)} (${esc(c.data.location)})</option>`).join('');
+  if (current) select.value = current;
+}
+
+async function loadAll() {
+  const [cases, movements, worklist] = await Promise.all([
+    fetch('/api/cases', { headers: headers() }).then(r => r.json()),
+    fetch('/api/movements', { headers: headers() }).then(r => r.json()),
+    fetch('/api/worklist', { headers: headers() }).then(r => r.json()),
+  ]);
+  state.cases = cases.items || [];
+  state.movements = (movements.items || []).sort((a, b) => (b.created_at > a.created_at ? 1 : -1));
+  state.worklist = worklist;
+  renderTotals(worklist.totals);
+  renderWorklist();
+  renderMovements();
+  renderCaseSelect();
+}
+
+async function seedDemo() {
+  // Case P-1 with own track; P-2 overlaps and is pending; P-3 completed follow-up;
+  // P-4 became a symptomatic case; one track lacks times with a reason.
+  await api('POST', '/api/cases', { person_id: 'P-1', onset_date: '2026-03-01', location: 'Cafe-X', symptoms: ['fever'] });
+  await loadAll();
+  const c1 = state.cases.find(c => c.data.person_id === 'P-1').id;
+  await api('POST', '/api/movements', { case_id: c1, location: 'Cafe-X', enter_time: '2026-02-28T09:00', leave_time: '2026-02-28T11:00' });
+  await api('POST', '/api/movements', { case_id: c1, person_id: 'P-2', location: 'Cafe-X', enter_time: '2026-02-28T10:00', leave_time: '2026-02-28T12:00' });
+  await api('POST', '/api/movements', { case_id: c1, person_id: 'P-3', location: 'Cafe-X', enter_time: '2026-02-28T09:30', leave_time: '2026-02-28T10:30' });
+  await api('POST', '/api/movements', { case_id: c1, person_id: 'P-4', location: 'Cafe-X', enter_time: '2026-02-28T09:15', leave_time: '2026-02-28T09:45' });
+  await api('POST', '/api/movements', { case_id: c1, person_id: 'P-5', location: 'Cafe-X', missing_time_reason: '患者记不清具体时间，等待监控核实' });
+  // P-3 completed follow-up
+  const contact3 = await api('POST', '/api/contacts', { case_id: c1, person_id: 'P-3', exposure_start: '2026-02-28' });
+  await api('POST', `/api/entities/${contact3.id}/actions`, { action: 'begin_followup', data: { followup_start: '2026-03-01', due_at: '2026-03-14' } });
+  await api('POST', `/api/entities/${contact3.id}/actions`, { action: 'complete_followup', data: { outcome: 'no symptoms' } });
+  // P-4 is now a symptomatic case
+  await api('POST', '/api/cases', { person_id: 'P-4', onset_date: '2026-03-02', location: 'Home', symptoms: ['cough'] });
+  await loadAll();
+}
+
+loadAll().catch(() => {});
 </script>
 </body>
 </html>

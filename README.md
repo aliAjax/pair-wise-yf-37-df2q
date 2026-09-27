@@ -25,6 +25,22 @@ python3 app.py --db ./data.db --port 8303
 ## 核心对象
 
 - `case`：病例和调查状态；`contact`：接触者随访。
+- `movement`：病例调查下登记的活动轨迹（地点 + 进入/离开时间）。
+- `exposure`：同地点时段重叠自动生成的暴露关系，仅由系统派生，不能手工创建。
+
+## 活动轨迹与暴露关系
+
+调查员把病例及同地点相关人员的轨迹登记为 `movement`：
+
+- 必填 `case_id`、`location`；`enter_time`、`leave_time` 使用 ISO 8601（如 `2026-02-28T09:00`）。
+- 时间不全时必须填写 `missing_time_reason`，轨迹进入 `pending_time`（待补时间）状态，不参与重叠计算；补全后执行 `supply_times` 转为 `recorded`。
+- 同一地点、不同人员、时段严格重叠（半开区间，仅端点相接不算重叠）自动生成 `exposure`，记录双方轨迹与重叠时段。
+- 已登记轨迹时间有误时执行 `correct_times`：该轨迹派生的旧暴露关系全部置为 `withdrawn`（审计可查），再按新时段重新计算。
+- 接触者随访状态变化会反映在工作台：`contact` 完成观察（`completed`）或本人已成为有症状病例的人员不再进入待随访名单。
+
+### 工作台接口
+
+- `GET /api/worklist`：按病例汇总重叠人数，以及 `pending`（待随访）、`following`（随访中）、`excluded`（已完成观察/本人已发病）名单，并列出该病例下 `pending_times` 的待补轨迹。
 
 ## 主要接口
 
