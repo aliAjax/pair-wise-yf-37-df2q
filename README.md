@@ -25,6 +25,16 @@ python3 app.py --db ./data.db --port 8303
 ## 核心对象
 
 - `case`：病例和调查状态；`contact`：接触者随访。
+- `trajectory`：病例调查下的活动轨迹（地点、进入/离开时间）。时间缺失时以 `pending_time` 状态保存，必须填写 `pending_reason`，补全后用 `supplement_time` 动作转 `active`；时间改正用 `correct_time`，错误轨迹可用 `invalidate` 作废。
+- `exposure`：同地点时段重叠自动推导出的暴露关系（系统维护，不可手工编辑）。
+
+## 轨迹重叠与待随访
+
+- 任意轨迹创建、补全、改正或作废后，系统重新计算所有 `active` 轨迹：同一地点（忽略首尾空格、大小写不敏感）且时间区间严格重叠的两条轨迹形成一条 `exposure`（端点相接不算重叠）。
+- 时间改正后，不再成立的旧 `exposure` 置为 `withdrawn`，重新成立时恢复为 `active` 并刷新重叠时段；全过程写入审计（`derive` / `withdraw` / `recalculate`）。
+- 暴露对方若是尚未登记为病例的人员，自动生成 `source=auto` 的 `contact`（按病例+人员去重）；关系撤回且接触者尚未开始随访时自动 `withdrawn`，关系恢复后自动 `reopen`。
+- 已完成观察（`completed`）或本人已登记为病例的人员不出现在待随访名单中；自动接触者不影响手工建立的接触者记录。
+- `GET /api/worklist` 返回重叠去重人数、有效暴露数、待补时间轨迹、待随访接触者和每条轨迹的重叠人数。演示页面（`/`）直接展示这些名单。
 
 ## 主要接口
 
@@ -34,6 +44,7 @@ python3 app.py --db ./data.db --port 8303
 - `GET /api/entities/<id>`：读取对象当前版本。
 - `POST /api/entities/<id>/actions`：提交`{"action":"动作名","data":{...},"expected_version":数字}`。
 - `GET /api/audit`：读取审计记录。
+- `GET /api/worklist`：重叠人数、待补时间轨迹和待随访接触者名单。
 
 请求身份通过`X-User-Id`和`X-Role`请求头传入。创建和动作的可执行角色由规则引擎控制。
 

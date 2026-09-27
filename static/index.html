@@ -5,30 +5,248 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>传染病暴发调查与接触网络</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #1f2937; }
-    main { max-width: 820px; margin: auto; }
-    pre { background: #f3f4f6; padding: 1rem; border-radius: 8px; overflow-x: auto; }
-    button { padding: .5rem .8rem; cursor: pointer; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 1.5rem; color: #1f2937; background: #f9fafb; }
+    main { max-width: 1080px; margin: auto; }
+    h1 { font-size: 1.4rem; }
+    h2 { font-size: 1.05rem; margin-top: 1.6rem; border-left: 4px solid #2563eb; padding-left: .5rem; }
+    .cards { display: flex; gap: .8rem; flex-wrap: wrap; margin: 1rem 0; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: .8rem 1.1rem; min-width: 150px; }
+    .card .num { font-size: 1.6rem; font-weight: 700; color: #2563eb; }
+    .card.warn .num { color: #d97706; }
+    .card.pend .num { color: #dc2626; }
+    .card .label { font-size: .8rem; color: #6b7280; }
+    form { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: .9rem 1rem; margin: .6rem 0; }
+    .row { display: flex; gap: .6rem; flex-wrap: wrap; align-items: end; }
+    label { font-size: .78rem; color: #374151; display: flex; flex-direction: column; gap: .25rem; }
+    input, select { padding: .4rem .5rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: .85rem; }
+    button { padding: .45rem .8rem; cursor: pointer; border: none; border-radius: 6px; background: #2563eb; color: #fff; font-size: .82rem; }
+    button.ghost { background: #e5e7eb; color: #1f2937; }
+    button.danger { background: #dc2626; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; font-size: .82rem; }
+    th, td { border-bottom: 1px solid #e5e7eb; padding: .45rem .55rem; text-align: left; vertical-align: top; }
+    th { background: #f3f4f6; font-weight: 600; }
+    .tag { display: inline-block; padding: .05rem .45rem; border-radius: 999px; font-size: .72rem; }
+    .tag.active, .tag.confirmed, .tag.following { background: #dbeafe; color: #1d4ed8; }
+    .tag.pending_time, .tag.identified { background: #fef3c7; color: #92400e; }
+    .tag.withdrawn, .tag.invalid, .tag.closed { background: #f3f4f6; color: #6b7280; }
+    .tag.completed, .tag.recovered { background: #d1fae5; color: #065f46; }
+    .tag.reported, .tag.investigating, .tag.probable { background: #ede9fe; color: #5b21b6; }
+    #msg { font-family: ui-monospace, monospace; font-size: .78rem; white-space: pre-wrap; background: #111827; color: #d1fae5; padding: .6rem .8rem; border-radius: 6px; min-height: 1.2rem; }
+    .muted { color: #6b7280; font-size: .76rem; }
   </style>
 </head>
 <body>
 <main>
-  <h1>传染病暴发调查与接触网络</h1>
-  <p>这是最小演示页面。使用浏览器或 curl 调用 JSON API。</p>
-  <p><button onclick="checkHealth()">检查服务状态</button></p>
-  <pre id="result">等待操作</pre>
-  <h2>常用接口</h2>
-  <pre>GET  /health
-GET  /api/&lt;kind&gt;
-POST /api/&lt;kind&gt;
-GET  /api/entities/&lt;id&gt;
-POST /api/entities/&lt;id&gt;/actions</pre>
+  <h1>传染病暴发调查 · 轨迹重叠工作台</h1>
+  <p class="muted">登记病例活动轨迹（地点 / 进入 / 离开），同地点时段重叠自动形成暴露关系与待随访名单。身份：
+    <select id="role">
+      <option value="investigator">investigator 调查员</option>
+      <option value="clinician">clinician 临床</option>
+      <option value="admin">admin 管理员</option>
+    </select>
+    <input id="user" value="inv-1" size="8" aria-label="用户编号">
+    <button class="ghost" onclick="refresh()">刷新</button>
+  </p>
+
+  <div class="cards">
+    <div class="card"><div class="num" id="c-overlap">–</div><div class="label">重叠人数（去重）</div></div>
+    <div class="card"><div class="num" id="c-exposure">–</div><div class="label">有效暴露关系</div></div>
+    <div class="card warn"><div class="num" id="c-ptraj">–</div><div class="label">待补时间轨迹</div></div>
+    <div class="card pend"><div class="num" id="c-pfollow">–</div><div class="label">待随访接触者</div></div>
+  </div>
+
+  <h2>登记病例</h2>
+  <form onsubmit="return createCase(event)">
+    <div class="row">
+      <label>患者编号<input id="case-person" value="P-1" required></label>
+      <label>发病日期<input id="case-onset" type="date" required></label>
+      <label>报告地点<input id="case-location" value="食堂" required></label>
+      <label>症状<input id="case-symptoms" value="fever" required></label>
+      <button type="submit">登记病例</button>
+    </div>
+  </form>
+
+  <h2>登记轨迹（病例调查下的活动时段）</h2>
+  <form onsubmit="return createTrajectory(event)">
+    <div class="row">
+      <label>所属病例<select id="traj-case"></select></label>
+      <label>在场人员（留空=病例本人）<input id="traj-person" placeholder="P-2"></label>
+      <label>地点<input id="traj-location" value="食堂" required></label>
+      <label>进入时间<input id="traj-enter" type="datetime-local"></label>
+      <label>离开时间<input id="traj-leave" type="datetime-local"></label>
+      <label>待补原因（时间缺失时必填）<input id="traj-reason" placeholder="如：监控未取回"></label>
+      <button type="submit">登记轨迹</button>
+    </div>
+  </form>
+
+  <h2>待处理名单</h2>
+  <h3 class="muted">待补时间轨迹</h3>
+  <table><thead><tr><th>轨迹</th><th>病例</th><th>人员</th><th>地点</th><th>待补原因</th><th>进入时间</th><th>离开时间</th><th></th></tr></thead><tbody id="tb-ptraj"></tbody></table>
+  <h3 class="muted">待随访接触者（已完成观察或本人已确诊者不列入）</h3>
+  <table><thead><tr><th>接触者</th><th>关联病例</th><th>人员</th><th>暴露地点</th><th>暴露时间</th><th>状态</th><th>操作</th></tr></thead><tbody id="tb-follow"></tbody></table>
+
+  <h2>暴露关系（同地点时段重叠）</h2>
+  <table><thead><tr><th>关系</th><th>地点</th><th>重叠开始</th><th>重叠结束</th><th>涉及人员</th><th>状态</th></tr></thead><tbody id="tb-exposures"></tbody></table>
+
+  <h2>轨迹与重叠人数</h2>
+  <table><thead><tr><th>轨迹</th><th>病例</th><th>人员</th><th>地点</th><th>进入</th><th>离开</th><th>重叠人数</th><th>状态</th><th>操作</th></tr></thead><tbody id="tb-trajectories"></tbody></table>
+
+  <h2>病例</h2>
+  <table><thead><tr><th>病例</th><th>患者编号</th><th>发病日期</th><th>地点</th><th>状态</th></tr></thead><tbody id="tb-cases"></tbody></table>
+
+  <p class="muted" style="margin-top:1rem">操作结果：</p>
+  <pre id="msg">等待操作</pre>
 </main>
 <script>
-async function checkHealth() {
-  const response = await fetch('/health');
-  document.getElementById('result').textContent = JSON.stringify(await response.json(), null, 2);
+let state = {cases: [], trajectories: [], exposures: [], worklist: null};
+
+function headers() {
+  return {
+    'Content-Type': 'application/json',
+    'X-User-Id': document.getElementById('user').value || 'inv-1',
+    'X-Role': document.getElementById('role').value
+  };
 }
+async function api(path, options) {
+  const response = await fetch(path, options);
+  const text = await response.text();
+  const payload = text ? JSON.parse(text) : {};
+  if (!response.ok) throw new Error(payload.error || ('HTTP ' + response.status));
+  return payload;
+}
+function show(value, ok = true) {
+  const el = document.getElementById('msg');
+  el.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  el.style.color = ok ? '#d1fae5' : '#fecaca';
+}
+function tag(status) { return '<span class="tag ' + status + '">' + status + '</span>'; }
+function esc(value) { return String(value ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function short(id) { return id ? id.slice(0, 8) : ''; }
+function caseLabel(id) {
+  const c = state.cases.find(x => x.id === id);
+  return c ? short(id) + ' (' + esc(c.data.person_id) + ')' : short(id);
+}
+
+async function refresh() {
+  const [cases, trajectories, exposures, worklist] = await Promise.all([
+    api('/api/cases'), api('/api/trajectories'), api('/api/exposures'), api('/api/worklist')
+  ]);
+  state = {cases: cases.items, trajectories: trajectories.items, exposures: exposures.items, worklist};
+  document.getElementById('c-overlap').textContent = worklist.overlap_people_count;
+  document.getElementById('c-exposure').textContent = worklist.active_exposure_count;
+  document.getElementById('c-ptraj').textContent = worklist.pending_trajectory_count;
+  document.getElementById('c-pfollow').textContent = worklist.pending_followup_count;
+
+  const caseSelect = document.getElementById('traj-case');
+  caseSelect.innerHTML = cases.items.map(c => '<option value="' + c.id + '">' + short(c.id) + ' (' + esc(c.data.person_id) + ')</option>').join('');
+
+  document.getElementById('tb-ptraj').innerHTML = worklist.pending_trajectories.map(t =>
+    '<tr><td>' + short(t.id) + '</td><td>' + caseLabel(t.case_id) + '</td><td>' + esc(t.person_id) +
+    '</td><td>' + esc(t.location) + '</td><td>' + esc(t.pending_reason) + '</td><td>' +
+    '<input type="datetime-local" id="sup-a-' + t.id + '"></td><td><input type="datetime-local" id="sup-b-' + t.id + '"></td><td>' +
+    '<button onclick="supplement(\'' + t.id + '\')">补全并计算</button></td></tr>'
+  ).join('') || '<tr><td colspan="7" class="muted">无</td></tr>';
+
+  document.getElementById('tb-follow').innerHTML = worklist.pending_followups.map(c =>
+    '<tr><td>' + short(c.id) + (c.source === 'auto' ? ' <span class="muted">自动</span>' : '') + '</td><td>' +
+    caseLabel(c.case_id) + '</td><td>' + esc(c.person_id) + '</td><td>' + esc(c.location) + '</td><td>' +
+    esc(c.exposure_start) + '</td><td>' + tag(c.status) + '</td><td>' +
+    (c.status === 'identified'
+      ? '<button onclick="follow(\'' + c.id + '\')">开始随访</button> '
+      : '<button class="ghost" onclick="completeFollow(\'' + c.id + '\')">完成观察</button>') +
+    '</td></tr>'
+  ).join('') || '<tr><td colspan="7" class="muted">无待随访人员</td></tr>';
+
+  document.getElementById('tb-exposures').innerHTML = exposures.items.map(e =>
+    '<tr><td>' + short(e.id) + '</td><td>' + esc(e.data.location) + '</td><td>' + esc(e.data.overlap_start) +
+    '</td><td>' + esc(e.data.overlap_end) + '</td><td>' +
+    e.data.sides.map(s => esc(s.person_id)).join(' ⇄ ') + '</td><td>' + tag(e.status) + '</td></tr>'
+  ).join('') || '<tr><td colspan="6" class="muted">暂无暴露关系</td></tr>';
+
+  const overlapCount = worklist.overlap_people_by_trajectory;
+  document.getElementById('tb-trajectories').innerHTML = trajectories.items.map(t =>
+    '<tr><td>' + short(t.id) + '</td><td>' + caseLabel(t.data.case_id) + '</td><td>' + esc(t.data.person_id) +
+    '</td><td>' + esc(t.data.location) + '</td><td>' + esc(t.data.enter_at) + '</td><td>' + esc(t.data.leave_at) +
+    '</td><td>' + (overlapCount[t.id] || 0) + '</td><td>' + tag(t.status) +
+    (t.data.pending_reason ? ' <span class="muted">' + esc(t.data.pending_reason) + '</span>' : '') +
+    '</td><td>' +
+      ((t.status === 'active' || t.status === 'pending_time')
+        ? '<input type="datetime-local" id="cor-a-' + t.id + '"> <input type="datetime-local" id="cor-b-' + t.id +
+          '"> <button class="ghost" onclick="correct(\'' + t.id + '\')">改正</button> ' +
+          '<button class="danger" onclick="invalidate(\'' + t.id + '\')">作废</button>'
+        : '') +
+    '</td></tr>'
+  ).join('');
+
+  document.getElementById('tb-cases').innerHTML = cases.items.map(c =>
+    '<tr><td>' + short(c.id) + '</td><td>' + esc(c.data.person_id) + '</td><td>' + esc(c.data.onset_date) +
+    '</td><td>' + esc(c.data.location) + '</td><td>' + tag(c.status) + '</td></tr>'
+  ).join('');
+}
+
+async function createCase(event) {
+  event.preventDefault();
+  try {
+    const payload = {
+      person_id: document.getElementById('case-person').value,
+      onset_date: document.getElementById('case-onset').value,
+      location: document.getElementById('case-location').value,
+      symptoms: document.getElementById('case-symptoms').value.split(',').map(s => s.trim()).filter(Boolean)
+    };
+    const created = await api('/api/cases', {method: 'POST', headers: headers(), body: JSON.stringify(payload)});
+    show('已登记病例 ' + created.id);
+    await refresh();
+  } catch (error) { show(error.message, false); }
+}
+
+async function createTrajectory(event) {
+  event.preventDefault();
+  try {
+    const payload = {
+      case_id: document.getElementById('traj-case').value,
+      location: document.getElementById('traj-location').value
+    };
+    const person = document.getElementById('traj-person').value.trim();
+    if (person) payload.person_id = person;
+    const enter = document.getElementById('traj-enter').value;
+    const leave = document.getElementById('traj-leave').value;
+    if (enter && leave) {
+      payload.enter_at = enter; payload.leave_at = leave;
+    } else {
+      payload.pending_reason = document.getElementById('traj-reason').value.trim() || null;
+    }
+    const created = await api('/api/trajectories', {method: 'POST', headers: headers(), body: JSON.stringify(payload)});
+    show('轨迹已登记：' + created.id + '，状态 ' + created.status);
+    await refresh();
+  } catch (error) { show(error.message, false); }
+}
+
+async function act(id, action, data) {
+  try {
+    const result = await api('/api/entities/' + id + '/actions', {
+      method: 'POST', headers: headers(), body: JSON.stringify({action, data})
+    });
+    show('动作 ' + action + ' 完成：' + result.status);
+    await refresh();
+  } catch (error) { show(error.message, false); }
+}
+function supplement(id) {
+  const enter = document.getElementById('sup-a-' + id).value;
+  const leave = document.getElementById('sup-b-' + id).value;
+  if (!enter || !leave) return show('请同时选择进入和离开时间', false);
+  act(id, 'supplement_time', {enter_at: enter, leave_at: leave});
+}
+function correct(id) {
+  const enter = document.getElementById('cor-a-' + id).value;
+  const leave = document.getElementById('cor-b-' + id).value;
+  if (!enter || !leave) return show('改正需同时填写进入和离开时间', false);
+  act(id, 'correct_time', {enter_at: enter, leave_at: leave});
+}
+function invalidate(id) { act(id, 'invalidate', {reason: '调查员页面作废'}); }
+function follow(id) { act(id, 'begin_followup', {followup_start: new Date().toISOString().slice(0, 10), due_at: '2026-12-31'}); }
+function completeFollow(id) { act(id, 'complete_followup', {outcome: 'no symptoms'}); }
+
+refresh().catch(error => show(error.message, false));
 </script>
 </body>
 </html>
